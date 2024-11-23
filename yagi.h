@@ -2,6 +2,7 @@
 #define YAGI_H_
 #include <stddef.h>
 #include <stdint.h>
+#include <assert.h>
 
 #include <raylib.h>
 
@@ -19,8 +20,7 @@ typedef struct {
 }Layout;
 
 typedef struct {
-    UIID active;
-    UIID highlight;
+    UIID active, focus, highlight;
     UIID id_counter;
 
     Layout layout_stack[YAGI_LAYOUT_MAX_COUNT];
@@ -28,6 +28,8 @@ typedef struct {
 }YagiUi;
 
 UIID yagi_id_next();
+static void yagi_expand_layout(Vector2 size);
+static Vector2 yagi_next_widget_pos();
 
 void yagi_ui_begin();
 void yagi_begin_layout(LayoutType type, Vector2 pos, float padding);
@@ -36,6 +38,7 @@ void yagi_end_layout();
 void yagi_ui_end();
 
 void yagi_text(const char* text);
+void yagi_empty(Vector2 size);
 bool yagi_button(const char* label);
 
 extern YagiUi yagi_ui;
@@ -52,7 +55,7 @@ static Layout* yagi__top_layout() {
     return &yagi_ui.layout_stack[yagi_ui.layout_count - 1];
 }
 
-static Vector2 yagi__next_widget_pos() {
+static Vector2 yagi_next_widget_pos() {
     Layout* top = yagi__top_layout();
 
     Vector2 pos = top->pos;
@@ -68,7 +71,7 @@ static Vector2 yagi__next_widget_pos() {
     }
 }
 
-static void yagi__expand_layout(Vector2 widget_size) {
+static void yagi_expand_layout(Vector2 widget_size) {
     Layout* top = yagi__top_layout();
 
     switch (top->type) {
@@ -101,7 +104,7 @@ void yagi_begin_sublayout(LayoutType type, float padding) {
     assert(yagi_ui.layout_count > 0);
     assert(yagi_ui.layout_count < YAGI_LAYOUT_MAX_COUNT);
 
-    Layout layout = {type, yagi__next_widget_pos(), {0, 0}, padding};
+    Layout layout = {type, yagi_next_widget_pos(), {0, 0}, padding};
     yagi_ui.layout_stack[yagi_ui.layout_count++] = layout;
 }
 
@@ -110,28 +113,32 @@ void yagi_end_layout() {
     yagi_ui.layout_count--;
 
     if (yagi_ui.layout_count > 0) {
-        yagi__expand_layout(child->size);
+        yagi_expand_layout(child->size);
     }
 }
 
 void yagi_ui_begin() {
-    if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) yagi_ui.active = 0;
-    else if (yagi_ui.active == 0) yagi_ui.active = UINT64_MAX;
-
     yagi_ui.highlight = 0;
     yagi_ui.id_counter = 0;
 }
 
-void yagi_ui_end() {}
+void yagi_ui_end() {
+    if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) yagi_ui.active = 0;
+    else if (yagi_ui.active == 0) yagi_ui.active = UINT64_MAX;
+}
 
 void yagi_text(const char* text) {
-    Vector2 pos = yagi__next_widget_pos();
+    Vector2 pos = yagi_next_widget_pos();
 
     int text_width = MeasureText(text, 20);
     DrawText(text, pos.x, pos.y, 20, BLACK);
 
     Vector2 size = { text_width, 20 };
-    yagi__expand_layout(size);
+    yagi_expand_layout(size);
+}
+
+void yagi_empty(Vector2 size) {
+    yagi_expand_layout(size);
 }
 
 bool yagi_button(const char* label) {
@@ -139,7 +146,7 @@ bool yagi_button(const char* label) {
     bool clicked = false;
 
     Vector2 widget_size = { MeasureText(label, 20), 20 };
-    Vector2 pos = yagi__next_widget_pos();
+    Vector2 pos = yagi_next_widget_pos();
     Rectangle rect = { pos.x, pos.y, widget_size.x, widget_size.y };
 
     Vector2 mouse = GetMousePosition();
@@ -148,12 +155,14 @@ bool yagi_button(const char* label) {
         yagi_ui.highlight = id;
         if (yagi_ui.active == 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             yagi_ui.active = id;
-        } else if (yagi_ui.active == id) {
-            if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-                clicked = true;
-            }
-            yagi_ui.active = 0;
         }
+    }
+
+    if (yagi_ui.active == id && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (collides) {
+            clicked = true;
+        }
+        yagi_ui.active = 0;
     }
 
     Color bg = WHITE;
@@ -163,7 +172,7 @@ bool yagi_button(const char* label) {
     DrawRectangleRec(rect, bg);
     DrawText(label, rect.x + rect.width / 2 - widget_size.x / 2, rect.y + rect.height / 2 - widget_size.y / 2, 20, BLACK);
 
-    yagi__expand_layout(widget_size);
+    yagi_expand_layout(widget_size);
 
     return clicked;
 }

@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
         cflags(&cmd, true);
         cmd_push_str(&cmd, "-o", "main", "main.c");
         libs(&cmd);
-        if (cmd_run_sync_and_reset(&cmd)) return 1;
+        if (!cmd_run_sync_and_reset(&cmd)) return 1;
     }
 
     return 0;
