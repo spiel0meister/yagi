@@ -40,6 +40,7 @@ void yagi_ui_end();
 void yagi_text(const char* text);
 void yagi_empty(Vector2 size);
 bool yagi_button(const char* label);
+bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count);
 
 extern YagiUi yagi_ui;
 
@@ -179,6 +180,94 @@ bool yagi_button(const char* label) {
     yagi_expand_layout(widget_size);
 
     return clicked;
+}
+
+bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count) {
+    int selected = *already_selected;
+    bool changed = false;
+    UIID id = yagi_id_next();
+
+    yagi_begin_sublayout(LAYOUT_VERT, 0);
+    Vector2 pos = yagi_next_widget_pos();
+    Rectangle rect = { pos.x, pos.y, 0, 20 };
+    for (size_t i = 0; i < label_count; i++) {
+        int text_width = MeasureText(labels[i], 20);
+        if (rect.width < text_width) rect.width = text_width;
+    }
+
+    if (*already_selected == -1) {
+        int text_width = MeasureText("Select...", 20);
+        if (rect.width < text_width) rect.width = text_width;
+    }
+
+    Vector2 mouse = GetMousePosition();
+    bool collides_main = CheckCollisionPointRec(mouse, rect);
+    if (collides_main) {
+        yagi_ui.highlight = id;
+        if (yagi_ui.active == 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            yagi_ui.active = id;
+        }
+    }
+
+    if (yagi_ui.active == id && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (collides_main) {
+            yagi_ui.focus = id;
+        }
+        yagi_ui.active = 0;
+    }
+
+    char* label = selected == -1 ? "Select..." : labels[selected];
+    int text_width = MeasureText(label, 20);
+    Color bg = WHITE;
+    if (yagi_ui.highlight == id) bg = ColorBrightness(bg, -0.5);
+
+    DrawRectangleRec((Rectangle) { rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4 }, BLACK);
+    DrawRectangleRec(rect, bg);
+
+    DrawText(label, rect.x + rect.width / 2 - (float)text_width / 2, rect.y + rect.height / 2 - 10, 20, BLACK);
+
+    yagi_expand_layout((Vector2) { rect.width, rect.height });
+    if (yagi_ui.focus == id) {
+        for (size_t i = 0; i < label_count; i++) {
+            int text_width = MeasureText(labels[i], 20);
+            Rectangle item_rect = { rect.x, rect.y + rect.height * (i + 1), rect.width, rect.height };
+            UIID item_id = yagi_id_next();
+
+            bool collides = CheckCollisionPointRec(mouse, item_rect);
+            if (collides) {
+                yagi_ui.highlight = item_id;
+                if (yagi_ui.active == 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    yagi_ui.active = item_id;
+                }
+            }
+
+            if (yagi_ui.active == item_id && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+                if (collides) {
+                    selected = i;
+                    changed = true;
+                }
+                yagi_ui.active = 0;
+            }
+
+            Color bg = WHITE;
+            if (yagi_ui.highlight == item_id) bg = ColorBrightness(bg, -0.5);
+
+            DrawRectangleRec((Rectangle) { item_rect.x - 2, item_rect.y - 2, item_rect.width + 4, item_rect.height + 4 }, BLACK);
+            DrawRectangleRec(item_rect, bg);
+
+            DrawText(labels[i], item_rect.x + item_rect.width / 2 - (float)text_width / 2, item_rect.y + item_rect.height / 2 - 10, 20, BLACK);
+            
+            yagi_expand_layout((Vector2) { item_rect.width, item_rect.height });
+        }
+    }
+    yagi_end_layout();
+
+    if (yagi_ui.focus == id && !collides_main && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        yagi_ui.focus = 0;
+    }
+
+    *already_selected = selected;
+    return changed;
 }
 
 #endif // YAGI_IMPLEMENTATION
