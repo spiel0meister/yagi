@@ -112,6 +112,10 @@ void yagi_end_layout() {
     Layout* child = yagi__top_layout();
     yagi_ui.layout_count--;
 
+#ifdef DEBUG
+    DrawRectangleLines(child->pos.x, child->pos.y, child->size.x, child->size.y, BLACK);
+#endif // DEBUG
+
     if (yagi_ui.layout_count > 0) {
         yagi_expand_layout(child->size);
     }
