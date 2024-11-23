@@ -18,6 +18,11 @@ void yagi_dropdown(int* already_selected, char* labels[], size_t label_count) {
         if (rect.width < text_width) rect.width = text_width;
     }
 
+    if (*already_selected == -1) {
+        int text_width = MeasureText("Select...", 20);
+        if (rect.width < text_width) rect.width = text_width;
+    }
+
     Vector2 mouse = GetMousePosition();
     bool collides_main = CheckCollisionPointRec(mouse, rect);
     if (collides_main) {
@@ -34,7 +39,7 @@ void yagi_dropdown(int* already_selected, char* labels[], size_t label_count) {
         yagi_ui.active = 0;
     }
 
-    char* label = labels[selected];
+    char* label = selected == -1 ? "Select..." : labels[selected];
     int text_width = MeasureText(label, 20);
     Color bg = WHITE;
     if (yagi_ui.highlight == id) bg = ColorBrightness(bg, -0.5);
@@ -95,7 +100,7 @@ char* labels[] = {
 int main(void) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "yagi");
 
-    int selected = 0;
+    int selected = -1;
     while (!WindowShouldClose()) {
         BeginDrawing();
         ClearBackground(RAYWHITE);
