@@ -17,11 +17,16 @@ typedef struct {
     Vector2 pos;
     Vector2 size;
     float padding;
+
+    const char* file;
+    int line;
 }Layout;
 
 typedef struct {
     UIID active, focus, highlight;
     UIID id_counter;
+
+    size_t start_counter;
 
     Layout layout_stack[YAGI_LAYOUT_MAX_COUNT];
     size_t layout_count;
@@ -33,20 +38,26 @@ char* yagi_utf8_temp(int* codepoints, int codepoints_count);
 static void yagi_expand_layout(Vector2 size);
 static Vector2 yagi_next_widget_pos();
 
-void yagi_ui_begin();
-void yagi_begin_layout(LayoutType type, Vector2 pos, float padding);
-void yagi_begin_sublayout(LayoutType type, float padding);
-void yagi_end_layout();
-void yagi_ui_end();
+void yagi_ui_begin_with_loc(const char* file, int line);
+void yagi_begin_layout_with_loc(LayoutType type, Vector2 pos, float padding, const char* file, int line);
+void yagi_begin_sublayout_with_loc(LayoutType type, float padding, const char* file, int line);
+void yagi_end_layout_with_loc(const char* file, int line);
+void yagi_ui_end_with_loc(const char* file, int line);
 
 void yagi_text(const char* text);
 void yagi_empty(Vector2 size);
 bool yagi_button(const char* label);
 bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count);
-
 // TODO: add selection
 // TODO: key things (moving by word, etc.)
 bool yagi_input(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max);
+bool yagi_slider(int width, float* value_ptr);
+
+#define yagi_ui_begin() yagi_ui_begin_with_loc(__FILE__, __LINE__)
+#define yagi_begin_layout(type, pos, padding) yagi_begin_layout_with_loc(type, pos, padding, __FILE__, __LINE__)
+#define yagi_begin_sublayout(type, padding) yagi_begin_sublayout_with_loc(type, padding, __FILE__, __LINE__)
+#define yagi_end_layout() yagi_end_layout_with_loc(__FILE__, __LINE__)
+#define yagi_ui_end() yagi_ui_end_with_loc(__FILE__, __LINE__)
 
 extern YagiUi yagi_ui;
 
@@ -54,6 +65,8 @@ extern YagiUi yagi_ui;
 
 #ifdef YAGI_IMPLEMENTATION
 #undef YAGI_IMPLEMENTATION
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static char yagi_utf8_temp_buf[1024] = {0};
@@ -110,41 +123,77 @@ UIID yagi_id_next() {
     return ++yagi_ui.id_counter;
 }
 
-void yagi_begin_layout(LayoutType type, Vector2 pos, float padding) {
-    assert(yagi_ui.layout_count < YAGI_LAYOUT_MAX_COUNT);
-    Layout layout = {type, pos, {0, 0}, padding};
+void yagi_begin_layout_with_loc(LayoutType type, Vector2 pos, float padding, const char* file, int line) {
+    if (yagi_ui.layout_count >= YAGI_LAYOUT_MAX_COUNT) {
+        fprintf(stderr, "[YAGI] %s: %d: Layout stack overflow", file, line);
+        abort();
+    }
+
+    Layout layout = {type, pos, {0, 0}, padding, file, line};
     yagi_ui.layout_stack[yagi_ui.layout_count++] = layout;
 }
 
-void yagi_begin_sublayout(LayoutType type, float padding) {
-    assert(yagi_ui.layout_count > 0);
-    assert(yagi_ui.layout_count < YAGI_LAYOUT_MAX_COUNT);
+void yagi_begin_sublayout_with_loc(LayoutType type, float padding, const char* file, int line) {
+    if (yagi_ui.layout_count >= YAGI_LAYOUT_MAX_COUNT) {
+        fprintf(stderr, "[YAGI] %s: %d: Layout stack overflow", file, line);
+        abort();
+    }
 
-    Layout layout = {type, yagi_next_widget_pos(), {0, 0}, padding};
-    yagi_ui.layout_stack[yagi_ui.layout_count++] = layout;
+    if (yagi_ui.layout_count <= 0) {
+        fprintf(stderr, "[YAGI] %s: %d: Layout needed to create sublayout", file, line);
+        abort();
+    }
+
+    yagi_begin_layout_with_loc(type, yagi_next_widget_pos(), padding, file, line);
 }
 
-void yagi_end_layout() {
+void yagi_end_layout_with_loc(const char* file, int line) {
+    if (yagi_ui.layout_count <= 0) {
+        fprintf(stderr, "%s: %d: Layout stack underflow", file, line);
+        abort();
+    }
+
     Layout* child = yagi__top_layout();
     yagi_ui.layout_count--;
 
-#ifdef DEBUG
+#ifdef YAGI_DEBUG
     DrawRectangleLines(child->pos.x, child->pos.y, child->size.x, child->size.y, BLACK);
-#endif // DEBUG
+#endif // YAGI_DEBUG
 
     if (yagi_ui.layout_count > 0) {
         yagi_expand_layout(child->size);
     }
 }
 
-void yagi_ui_begin() {
+void yagi_ui_begin_with_loc(const char* file, int line) {
+    if (yagi_ui.layout_count > 0) {
+        fprintf(stderr, "[YAGI] %s:%d: yagi_ui_end was not called\n", file, line);
+        abort();
+    }
+    yagi_ui.start_counter += 1;
+
     yagi_ui.highlight = 0;
     yagi_ui.id_counter = 0;
 }
 
-void yagi_ui_end() {
+void yagi_ui_end_with_loc(const char* file, int line) {
     if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) yagi_ui.active = 0;
     else if (yagi_ui.active == 0) yagi_ui.active = UINT64_MAX;
+
+    if (yagi_ui.layout_count > 0) {
+        fprintf(stderr, "[YAGI] Layout stack not empty: \n");
+        for (size_t i = 0; i < yagi_ui.layout_count; i++) {
+            Layout* layout = &yagi_ui.layout_stack[i];
+            fprintf(stderr, "[YAGI] Layout declared at %s:%d\n", layout->file, layout->line);
+        }
+        abort();
+    }
+
+    if (yagi_ui.layout_count == 0) {
+        fprintf(stderr, "[YAGI] %s:%d: yagi_ui_start was not called\n", file, line);
+        abort();
+    }
+    yagi_ui.start_counter -= 1;
 }
 
 void yagi_text(const char* text) {
@@ -348,6 +397,51 @@ bool yagi_input(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size
     yagi_expand_layout(size);
 
     *codepoint_count_ptr = codepoint_count;
+    return changed;
+}
+
+bool yagi_slider(int width, float* value_ptr) {
+    UIID id = yagi_id_next();
+
+    float value = *value_ptr;
+    bool changed = false;
+
+    Vector2 pos = yagi_next_widget_pos();
+    Rectangle rect = { pos.x, pos.y, width, 4 };
+    Vector2 ball_pos = { rect.x + width * value, rect.y + rect.height / 2 };
+    float ball_r = rect.height * 2;
+
+    Vector2 mouse = GetMousePosition();
+    bool collides_with_ball = CheckCollisionPointCircle(mouse, ball_pos, ball_r);
+    if (collides_with_ball) {
+        yagi_ui.highlight = id;
+        if (yagi_ui.active == 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            yagi_ui.active = id;
+        }
+    }
+
+    if (yagi_ui.active == id && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        yagi_ui.active = 0;
+    }
+
+    DrawRectangle(rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4, BLACK);
+    DrawRectangleRec(rect, WHITE);
+
+    Color circle_color = BLACK;
+    if (yagi_ui.highlight == id) circle_color = ColorBrightness(circle_color, 0.5);
+    DrawCircleV(ball_pos, ball_r, circle_color);
+
+    if (yagi_ui.active == id) {
+        Vector2 mouse_delta = GetMouseDelta();
+        value = (ball_pos.x - rect.x + mouse_delta.x) / rect.width;
+        if (value < 0) value = 0;
+        if (value > 1) value = 1;
+        changed = true;
+    }
+
+    yagi_expand_layout((Vector2) { rect.width, rect.height });
+
+    *value_ptr = value;
     return changed;
 }
 
