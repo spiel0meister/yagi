@@ -43,6 +43,7 @@ void yagi_text(const char* text);
 void yagi_empty(Vector2 size);
 bool yagi_button(const char* label);
 bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count);
+bool yagi_input(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max);
 
 extern YagiUi yagi_ui;
 
@@ -278,6 +279,70 @@ bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count) {
     }
 
     *already_selected = selected;
+    return changed;
+}
+
+
+bool yagi_input(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max) {
+    size_t codepoint_count = *codepoint_count_ptr;
+    bool changed = false;
+    UIID id = yagi_id_next();
+
+    Vector2 pos = yagi_next_widget_pos();
+    Rectangle rect = { pos.x, pos.y, size.x, size.y };
+
+    Vector2 mouse = GetMousePosition();
+    bool collides = CheckCollisionPointRec(mouse, rect);
+    if (collides) {
+        yagi_ui.highlight = id;
+        if (yagi_ui.active == 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            yagi_ui.active = id;
+        }
+    }
+
+    if (yagi_ui.active == id && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (collides) {
+            yagi_ui.focus = id;
+        }
+        yagi_ui.active = 0;
+    }
+
+    bool is_focused = yagi_ui.focus == id;
+    if (is_focused) {
+        int key = GetCharPressed();
+        if (key >= ' ' && codepoint_count < codepoint_count_max) {
+            codepoints[codepoint_count++] = key;
+            changed = true;
+        }
+
+        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && codepoint_count > 0) {
+            codepoint_count--;
+            changed = true;
+        }
+    }
+
+    if (is_focused) DrawRectangle(rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4, BLACK);
+    DrawRectangleRec(rect, WHITE);
+
+    size_t codepoint_offset = 0;
+
+    char* utf8 = yagi_utf8_temp(codepoints + codepoint_offset, codepoint_count - codepoint_offset);
+    Vector2 text_width = MeasureTextEx(GetFontDefault(), utf8, 20, 1);
+    while (codepoint_offset < codepoint_count && text_width.x > size.x) {
+        codepoint_offset++;
+
+        utf8 = yagi_utf8_temp(codepoints + codepoint_offset, codepoint_count - codepoint_offset);
+        text_width = MeasureTextEx(GetFontDefault(), utf8, 20, 1);
+    }
+
+    codepoints[codepoint_count] = 0;
+    Rectangle cursor = { rect.x + text_width.x, rect.y, 2, 20 };
+    DrawTextCodepoints(GetFontDefault(), codepoints + codepoint_offset, codepoint_count - codepoint_offset, (Vector2){ rect.x, rect.y }, 20, 1, BLACK);
+    if (is_focused) DrawRectangleRec(cursor, BLACK);
+
+    if (!collides && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && yagi_ui.focus == id) yagi_ui.focus = 0;
+
+    *codepoint_count_ptr = codepoint_count;
     return changed;
 }
 
