@@ -16,15 +16,37 @@ void libs(Cmd* cmd) {
     cmd_push_str(cmd, "-lraylib", "-lm");
 }
 
+const char* examples[][2] = {
+    { "./fsview.c", "./build/fsview" },
+    { "./main.c", "./build/main" },
+};
+#define EXAMPLES_COUNT (sizeof(examples)/sizeof(examples[0]))
+
+bool build_examples(Cmd* cmd) {
+    for (size_t i = 0; i < EXAMPLES_COUNT; i++) {
+        if (need_rebuild1(examples[i][1], examples[i][0])) {
+            cc(cmd);
+            cflags(cmd, true);
+            cmd_push_str(cmd, "-o", examples[i][1], examples[i][0]);
+            libs(cmd);
+            if (!cmd_run_sync_and_reset(cmd)) return false;
+        }
+    }
+    return true;
+}
+
 int main(int argc, char* argv[]) {
     Cmd cmd = {0};
     build_yourself(&cmd, argc, argv);
 
-    if (need_rebuild1("main", "main.c")) {
+    if (!create_dir_if_not_exists("./build")) return 1;
+
+    if (!build_examples(&cmd)) return 1;
+
+    if (need_rebuild1("./build/yagi.o", "yagi.h")) {
         cc(&cmd);
         cflags(&cmd, true);
-        cmd_push_str(&cmd, "-o", "main", "main.c");
-        libs(&cmd);
+        cmd_push_str(&cmd, "-c", "-o", "./build/yagi.o", "yagi.c");
         if (!cmd_run_sync_and_reset(&cmd)) return 1;
     }
 
