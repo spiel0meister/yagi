@@ -64,7 +64,7 @@ bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int lin
 #define yagi_ui_end() yagi_ui_end_with_loc(__FILE__, __LINE__)
 
 #define yagi_text(...) yagi_text_with_loc(__FILE__, __LINE__, __VA_ARGS__)
-#define yagi_empty(size) yagi_empty_with_size(size, __FILE__, __LINE__)
+#define yagi_empty(size) yagi_empty_with_loc(size, __FILE__, __LINE__)
 #define yagi_button(label) yagi_button_with_loc(label, __FILE__, __LINE__)
 #define yagi_dropdown(already_selected, labels, label_count) yagi_dropdown_with_loc(already_selected, labels, label_count, __FILE__, __LINE__)
 #define yagi_input(size, codepoints, codepoint_count_ptr, codepoint_count_max) yagi_input_with_loc(size, codepoints, codepoint_count_ptr, codepoint_count_max, __FILE__, __LINE__)
