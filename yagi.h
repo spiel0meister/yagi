@@ -28,6 +28,8 @@ typedef struct {
 }YagiUi;
 
 UIID yagi_id_next();
+char* yagi_utf8_temp(int* codepoints, int codepoints_count);
+
 static void yagi_expand_layout(Vector2 size);
 static Vector2 yagi_next_widget_pos();
 
@@ -48,6 +50,15 @@ extern YagiUi yagi_ui;
 
 #ifdef YAGI_IMPLEMENTATION
 #undef YAGI_IMPLEMENTATION
+#include <string.h>
+
+static char yagi_utf8_temp_buf[1024] = {0};
+char* yagi_utf8_temp(int* codepoints, int codepoints_count) {
+    char* utf8 = LoadUTF8(codepoints, codepoints_count);
+    strcpy(yagi_utf8_temp_buf, utf8);
+    UnloadUTF8(utf8);
+    return yagi_utf8_temp_buf;
+}
 
 YagiUi yagi_ui = {0};
 
