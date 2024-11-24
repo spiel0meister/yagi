@@ -184,7 +184,7 @@ void yagi_ui_end_with_loc(const char* file, int line) {
         fprintf(stderr, "[YAGI] Layout stack not empty: \n");
         for (size_t i = 0; i < yagi_ui.layout_count; i++) {
             Layout* layout = &yagi_ui.layout_stack[i];
-            fprintf(stderr, "[YAGI] \tLayout declared at %s:%d\n", layout->file, layout->line);
+            fprintf(stderr, "[YAGI]     Layout declared at %s:%d\n", layout->file, layout->line);
         }
         abort();
     }
