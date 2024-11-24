@@ -6,7 +6,7 @@
 void cflags(Cmd* cmd, bool debug) {
     cmd_push_str(cmd, "-Wall", "-Wextra");
     if (debug) {
-        cmd_push_str(cmd, "-ggdb", "-DDEBUG");
+        cmd_push_str(cmd, "-ggdb", "-DYAGI_DEBUG");
     } else {
         cmd_push_str(cmd, "-O2");
     }
