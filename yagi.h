@@ -36,7 +36,8 @@ UIID yagi_id_next();
 char* yagi_utf8_temp(int* codepoints, int codepoints_count);
 
 static void yagi_expand_layout(Vector2 size);
-static Vector2 yagi_next_widget_pos();
+static Vector2 yagi_next_widget_pos_with_loc(const char* file, int line);
+#define yagi_next_widget_pos() yagi_next_widget_pos_with_loc(__FILE__, __LINE__)
 
 void yagi_ui_begin_with_loc(const char* file, int line);
 void yagi_begin_layout_with_loc(LayoutType type, Vector2 pos, float padding, const char* file, int line);
@@ -44,7 +45,8 @@ void yagi_begin_sublayout_with_loc(LayoutType type, float padding, const char* f
 void yagi_end_layout_with_loc(const char* file, int line);
 void yagi_ui_end_with_loc(const char* file, int line);
 
-void yagi_text(const char* text);
+// TODO: add file and line reporting
+void yagi_text(const char* fmt, ...);
 void yagi_empty(Vector2 size);
 bool yagi_button(const char* label);
 bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count);
@@ -79,13 +81,17 @@ char* yagi_utf8_temp(int* codepoints, int codepoints_count) {
 
 YagiUi yagi_ui = {0};
 
-static Layout* yagi__top_layout() {
-    assert(yagi_ui.layout_count > 0);
+static Layout* yagi__top_layout_with_loc(const char* file, int line) {
+    if (yagi_ui.layout_count <= 0) {
+        fprintf(stderr, "%s: %d: Layout stack underflow\n", file, line);
+        abort();
+    }
+
     return &yagi_ui.layout_stack[yagi_ui.layout_count - 1];
 }
 
-static Vector2 yagi_next_widget_pos() {
-    Layout* top = yagi__top_layout();
+static Vector2 yagi_next_widget_pos_with_loc(const char* file, int line) {
+    Layout* top = yagi__top_layout_with_loc(file, line);
 
     Vector2 pos = top->pos;
     switch (top->type) {
@@ -101,7 +107,7 @@ static Vector2 yagi_next_widget_pos() {
 }
 
 static void yagi_expand_layout(Vector2 widget_size) {
-    Layout* top = yagi__top_layout();
+    Layout* top = yagi__top_layout_with_loc(__FILE__, __LINE__);
     
     switch (top->type) {
         case LAYOUT_HORZ:
@@ -125,7 +131,7 @@ UIID yagi_id_next() {
 
 void yagi_begin_layout_with_loc(LayoutType type, Vector2 pos, float padding, const char* file, int line) {
     if (yagi_ui.layout_count >= YAGI_LAYOUT_MAX_COUNT) {
-        fprintf(stderr, "[YAGI] %s: %d: Layout stack overflow", file, line);
+        fprintf(stderr, "[YAGI] %s: %d: Layout stack overflow\n", file, line);
         abort();
     }
 
@@ -135,12 +141,12 @@ void yagi_begin_layout_with_loc(LayoutType type, Vector2 pos, float padding, con
 
 void yagi_begin_sublayout_with_loc(LayoutType type, float padding, const char* file, int line) {
     if (yagi_ui.layout_count >= YAGI_LAYOUT_MAX_COUNT) {
-        fprintf(stderr, "[YAGI] %s: %d: Layout stack overflow", file, line);
+        fprintf(stderr, "[YAGI] %s: %d: Layout stack overflow\n", file, line);
         abort();
     }
 
     if (yagi_ui.layout_count <= 0) {
-        fprintf(stderr, "[YAGI] %s: %d: Layout needed to create sublayout", file, line);
+        fprintf(stderr, "[YAGI] %s: %d: Layout needed to create sublayout\n", file, line);
         abort();
     }
 
@@ -148,12 +154,7 @@ void yagi_begin_sublayout_with_loc(LayoutType type, float padding, const char* f
 }
 
 void yagi_end_layout_with_loc(const char* file, int line) {
-    if (yagi_ui.layout_count <= 0) {
-        fprintf(stderr, "%s: %d: Layout stack underflow", file, line);
-        abort();
-    }
-
-    Layout* child = yagi__top_layout();
+    Layout* child = yagi__top_layout_with_loc(file, line);
     yagi_ui.layout_count--;
 
 #ifdef YAGI_DEBUG
@@ -196,11 +197,19 @@ void yagi_ui_end_with_loc(const char* file, int line) {
     yagi_ui.start_counter -= 1;
 }
 
-void yagi_text(const char* text) {
+void yagi_text(const char* fmt, ...) {
+static char yagi_text_buffer[4096] = {0};
+    va_list args;
+
+    va_start(args, fmt);
+    vsnprintf(yagi_text_buffer, 4096, fmt, args);
+    va_end(args);
+
     Vector2 pos = yagi_next_widget_pos();
 
-    int text_width = MeasureText(text, 20);
-    DrawText(text, pos.x, pos.y, 20, BLACK);
+    int text_width = MeasureText(yagi_text_buffer, 20);
+    DrawText(yagi_text_buffer, pos.x, pos.y, 20, BLACK);
+
 
     Vector2 size = { text_width, 20 };
     yagi_expand_layout(size);
