@@ -43,6 +43,9 @@ void yagi_text(const char* text);
 void yagi_empty(Vector2 size);
 bool yagi_button(const char* label);
 bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count);
+
+// TODO: add selection
+// TODO: key things (moving by word, etc.)
 bool yagi_input(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max);
 
 extern YagiUi yagi_ui;
@@ -86,7 +89,7 @@ static Vector2 yagi_next_widget_pos() {
 
 static void yagi_expand_layout(Vector2 widget_size) {
     Layout* top = yagi__top_layout();
-
+    
     switch (top->type) {
         case LAYOUT_HORZ:
             top->size.x += widget_size.x + top->padding;
@@ -341,6 +344,8 @@ bool yagi_input(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size
     if (is_focused) DrawRectangleRec(cursor, BLACK);
 
     if (!collides && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && yagi_ui.focus == id) yagi_ui.focus = 0;
+    
+    yagi_expand_layout(size);
 
     *codepoint_count_ptr = codepoint_count;
     return changed;
