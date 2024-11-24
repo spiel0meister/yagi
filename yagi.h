@@ -47,7 +47,6 @@ void yagi_begin_sublayout_with_loc(LayoutType type, float padding, const char* f
 void yagi_end_layout_with_loc(const char* file, int line);
 void yagi_ui_end_with_loc(const char* file, int line);
 
-// TODO: add file and line reporting
 void yagi_text_with_loc(const char* file, int line, const char* fmt, ...);
 void yagi_empty_with_loc(Vector2 size, const char* file, int line);
 bool yagi_button_with_loc(const char* label, const char* file, int line);
