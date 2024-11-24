@@ -35,9 +35,11 @@ typedef struct {
 UIID yagi_id_next();
 char* yagi_utf8_temp(int* codepoints, int codepoints_count);
 
-static void yagi_expand_layout(Vector2 size);
+static void yagi_expand_layout_with_loc(Vector2 size, const char* file, int line);
 static Vector2 yagi_next_widget_pos_with_loc(const char* file, int line);
+
 #define yagi_next_widget_pos() yagi_next_widget_pos_with_loc(__FILE__, __LINE__)
+#define yagi_expand_layout(size) yagi_expand_layout_with_loc(size, __FILE__, __LINE__)
 
 void yagi_ui_begin_with_loc(const char* file, int line);
 void yagi_begin_layout_with_loc(LayoutType type, Vector2 pos, float padding, const char* file, int line);
@@ -46,20 +48,27 @@ void yagi_end_layout_with_loc(const char* file, int line);
 void yagi_ui_end_with_loc(const char* file, int line);
 
 // TODO: add file and line reporting
-void yagi_text(const char* fmt, ...);
-void yagi_empty(Vector2 size);
-bool yagi_button(const char* label);
-bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count);
+void yagi_text_with_loc(const char* file, int line, const char* fmt, ...);
+void yagi_empty_with_loc(Vector2 size, const char* file, int line);
+bool yagi_button_with_loc(const char* label, const char* file, int line);
+bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_count, const char* file, int line);
 // TODO: add selection
 // TODO: key things (moving by word, etc.)
-bool yagi_input(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max);
-bool yagi_slider(int width, float* value_ptr);
+bool yagi_input_with_loc(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max, const char* file, int line);
+bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int line);
 
 #define yagi_ui_begin() yagi_ui_begin_with_loc(__FILE__, __LINE__)
 #define yagi_begin_layout(type, pos, padding) yagi_begin_layout_with_loc(type, pos, padding, __FILE__, __LINE__)
 #define yagi_begin_sublayout(type, padding) yagi_begin_sublayout_with_loc(type, padding, __FILE__, __LINE__)
 #define yagi_end_layout() yagi_end_layout_with_loc(__FILE__, __LINE__)
 #define yagi_ui_end() yagi_ui_end_with_loc(__FILE__, __LINE__)
+
+#define yagi_text(...) yagi_text_with_loc(__FILE__, __LINE__, __VA_ARGS__)
+#define yagi_empty(size) yagi_empty_with_size(size, __FILE__, __LINE__)
+#define yagi_button(label) yagi_button_with_loc(label, __FILE__, __LINE__)
+#define yagi_dropdown(already_selected, labels, label_count) yagi_dropdown_with_loc(already_selected, labels, label_count, __FILE__, __LINE__)
+#define yagi_input(size, codepoints, codepoint_count_ptr, codepoint_count_max) yagi_input_with_loc(size, codepoints, codepoint_count_ptr, codepoint_count_max, __FILE__, __LINE__)
+#define yagi_slider(width, value_ptr) yagi_slider_with_loc(width, value_ptr, __FILE__, __LINE__)
 
 extern YagiUi yagi_ui;
 
@@ -106,8 +115,8 @@ static Vector2 yagi_next_widget_pos_with_loc(const char* file, int line) {
     }
 }
 
-static void yagi_expand_layout(Vector2 widget_size) {
-    Layout* top = yagi__top_layout_with_loc(__FILE__, __LINE__);
+static void yagi_expand_layout_with_loc(Vector2 widget_size, const char* file, int line) {
+    Layout* top = yagi__top_layout_with_loc(file, line);
     
     switch (top->type) {
         case LAYOUT_HORZ:
@@ -140,17 +149,12 @@ void yagi_begin_layout_with_loc(LayoutType type, Vector2 pos, float padding, con
 }
 
 void yagi_begin_sublayout_with_loc(LayoutType type, float padding, const char* file, int line) {
-    if (yagi_ui.layout_count >= YAGI_LAYOUT_MAX_COUNT) {
-        fprintf(stderr, "[YAGI] %s: %d: Layout stack overflow\n", file, line);
-        abort();
-    }
-
     if (yagi_ui.layout_count <= 0) {
         fprintf(stderr, "[YAGI] %s: %d: Layout needed to create sublayout\n", file, line);
         abort();
     }
 
-    yagi_begin_layout_with_loc(type, yagi_next_widget_pos(), padding, file, line);
+    yagi_begin_layout_with_loc(type, yagi_next_widget_pos_with_loc(file, line), padding, file, line);
 }
 
 void yagi_end_layout_with_loc(const char* file, int line) {
@@ -162,12 +166,12 @@ void yagi_end_layout_with_loc(const char* file, int line) {
 #endif // YAGI_DEBUG
 
     if (yagi_ui.layout_count > 0) {
-        yagi_expand_layout(child->size);
+        yagi_expand_layout_with_loc(child->size, file, line);
     }
 }
 
 void yagi_ui_begin_with_loc(const char* file, int line) {
-    if (yagi_ui.layout_count > 0) {
+    if (yagi_ui.start_counter > 0) {
         fprintf(stderr, "[YAGI] %s:%d: yagi_ui_end was not called\n", file, line);
         abort();
     }
@@ -197,7 +201,7 @@ void yagi_ui_end_with_loc(const char* file, int line) {
     yagi_ui.start_counter -= 1;
 }
 
-void yagi_text(const char* fmt, ...) {
+void yagi_text_with_loc(const char* file, int line, const char* fmt, ...) {
 static char yagi_text_buffer[4096] = {0};
     va_list args;
 
@@ -205,26 +209,26 @@ static char yagi_text_buffer[4096] = {0};
     vsnprintf(yagi_text_buffer, 4096, fmt, args);
     va_end(args);
 
-    Vector2 pos = yagi_next_widget_pos();
+    Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
 
     int text_width = MeasureText(yagi_text_buffer, 20);
     DrawText(yagi_text_buffer, pos.x, pos.y, 20, BLACK);
 
 
     Vector2 size = { text_width, 20 };
-    yagi_expand_layout(size);
+    yagi_expand_layout_with_loc(size, file, line);
 }
 
-void yagi_empty(Vector2 size) {
-    yagi_expand_layout(size);
+void yagi_empty_with_loc(Vector2 size, const char* file, int line) {
+    yagi_expand_layout_with_loc(size, file, line);
 }
 
-bool yagi_button(const char* label) {
+bool yagi_button_with_loc(const char* label, const char* file, int line) {
     UIID id = yagi_id_next();
     bool clicked = false;
 
     Vector2 widget_size = { MeasureText(label, 20), 20 };
-    Vector2 pos = yagi_next_widget_pos();
+    Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
     Rectangle rect = { pos.x, pos.y, widget_size.x, widget_size.y };
 
     Vector2 mouse = GetMousePosition();
@@ -250,18 +254,18 @@ bool yagi_button(const char* label) {
     DrawRectangleRec(rect, bg);
     DrawText(label, rect.x + rect.width / 2 - widget_size.x / 2, rect.y + rect.height / 2 - widget_size.y / 2, 20, BLACK);
 
-    yagi_expand_layout(widget_size);
+    yagi_expand_layout_with_loc(widget_size, file, line);
 
     return clicked;
 }
 
-bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count) {
+bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_count, const char* file, int line) {
     int selected = *already_selected;
     bool changed = false;
     UIID id = yagi_id_next();
 
     yagi_begin_sublayout(LAYOUT_VERT, 0);
-    Vector2 pos = yagi_next_widget_pos();
+    Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
     Rectangle rect = { pos.x, pos.y, 0, 20 };
     for (size_t i = 0; i < label_count; i++) {
         int text_width = MeasureText(labels[i], 20);
@@ -299,7 +303,7 @@ bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count) {
 
     DrawText(label, rect.x + rect.width / 2 - (float)text_width / 2, rect.y + rect.height / 2 - 10, 20, BLACK);
 
-    yagi_expand_layout((Vector2) { rect.width, rect.height });
+    yagi_expand_layout_with_loc((Vector2) { rect.width, rect.height }, file, line);
     if (yagi_ui.focus == id) {
         for (size_t i = 0; i < label_count; i++) {
             int text_width = MeasureText(labels[i], 20);
@@ -330,7 +334,7 @@ bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count) {
 
             DrawText(labels[i], item_rect.x + item_rect.width / 2 - (float)text_width / 2, item_rect.y + item_rect.height / 2 - 10, 20, BLACK);
             
-            yagi_expand_layout((Vector2) { item_rect.width, item_rect.height });
+            yagi_expand_layout_with_loc((Vector2) { item_rect.width, item_rect.height }, file, line);
         }
     }
     yagi_end_layout();
@@ -344,12 +348,12 @@ bool yagi_dropdown(int* already_selected, char* labels[], size_t label_count) {
 }
 
 
-bool yagi_input(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max) {
+bool yagi_input_with_loc(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max, const char* file, int line) {
     size_t codepoint_count = *codepoint_count_ptr;
     bool changed = false;
     UIID id = yagi_id_next();
 
-    Vector2 pos = yagi_next_widget_pos();
+    Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
     Rectangle rect = { pos.x, pos.y, size.x, size.y };
 
     Vector2 mouse = GetMousePosition();
@@ -403,19 +407,19 @@ bool yagi_input(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size
 
     if (!collides && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && yagi_ui.focus == id) yagi_ui.focus = 0;
     
-    yagi_expand_layout(size);
+    yagi_expand_layout_with_loc(size, file, line);
 
     *codepoint_count_ptr = codepoint_count;
     return changed;
 }
 
-bool yagi_slider(int width, float* value_ptr) {
+bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int line) {
     UIID id = yagi_id_next();
 
     float value = *value_ptr;
     bool changed = false;
 
-    Vector2 pos = yagi_next_widget_pos();
+    Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
     Rectangle rect = { pos.x, pos.y, width, 4 };
     Vector2 ball_pos = { rect.x + width * value, rect.y + rect.height / 2 };
     float ball_r = rect.height * 2;
@@ -448,7 +452,7 @@ bool yagi_slider(int width, float* value_ptr) {
         changed = true;
     }
 
-    yagi_expand_layout((Vector2) { rect.width, rect.height });
+    yagi_expand_layout_with_loc((Vector2) { rect.width, rect.height }, file, line);
 
     *value_ptr = value;
     return changed;
