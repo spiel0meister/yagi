@@ -39,6 +39,12 @@ typedef struct {
     size_t layout_count;
 }YagiUi;
 
+typedef struct {
+    int* codepoints;
+    size_t count;
+    size_t capacity;
+}InputBuffer;
+
 UIID yagi_id_next();
 char* yagi_utf8_temp(int* codepoints, int codepoints_count);
 
@@ -64,7 +70,7 @@ bool yagi_button_with_loc(const char* label, const char* file, int line);
 bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_count, const char* file, int line);
 // TODO: add selection
 // TODO: key things (moving by word, etc.)
-bool yagi_input_with_loc(int width, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max, const char* file, int line);
+bool yagi_input_with_loc(int width, InputBuffer* input_buffer, const char* file, int line);
 bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int line);
 
 #define yagi_ui_begin() yagi_ui_begin_with_loc(__FILE__, __LINE__)
@@ -77,7 +83,7 @@ bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int lin
 #define yagi_empty(size) yagi_empty_with_loc(size, __FILE__, __LINE__)
 #define yagi_button(label) yagi_button_with_loc(label, __FILE__, __LINE__)
 #define yagi_dropdown(already_selected, labels, label_count) yagi_dropdown_with_loc(already_selected, labels, label_count, __FILE__, __LINE__)
-#define yagi_input(width, codepoints, codepoint_count_ptr, codepoint_count_max) yagi_input_with_loc(width, codepoints, codepoint_count_ptr, codepoint_count_max, __FILE__, __LINE__)
+#define yagi_input(width, input_buffer) yagi_input_with_loc(width, input_buffer, __FILE__, __LINE__)
 #define yagi_slider(width, value_ptr) yagi_slider_with_loc(width, value_ptr, __FILE__, __LINE__)
 
 extern YagiUi yagi_ui;
@@ -89,6 +95,15 @@ extern YagiUi yagi_ui;
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void yagi__input_buffer_push(InputBuffer* self, int c) {
+    if (self->count >= self->capacity) {
+        if (self->capacity == 0) self->capacity = 16;
+        while (self->count >= self->capacity) self->capacity *= 2;
+        self->codepoints = realloc(self->codepoints, sizeof(*self->codepoints) * self->capacity);
+    }
+    self->codepoints[self->count++] = c;
+}
 
 static char yagi_utf8_temp_buf[1024] = {0};
 char* yagi_utf8_temp(int* codepoints, int codepoints_count) {
@@ -188,10 +203,6 @@ void yagi_begin_sublayout_with_loc(LayoutType type, float padding, const char* f
 void yagi_end_layout_with_loc(const char* file, int line) {
     Layout* child = yagi__top_layout_with_loc(file, line);
     yagi_ui.layout_count--;
-
-#ifdef YAGI_DEBUG
-    DrawRectangleLines(child->pos.x, child->pos.y, child->size.x, child->size.y, BLACK);
-#endif // YAGI_DEBUG
 
     if (yagi_ui.layout_count > 0) {
         yagi_expand_layout_with_loc(child->size, file, line);
@@ -379,8 +390,7 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
 }
 
 
-bool yagi_input_with_loc(int width, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max, const char* file, int line) {
-    size_t codepoint_count = *codepoint_count_ptr;
+bool yagi_input_with_loc(int width, InputBuffer* input_buffer, const char* file, int line) {
     bool changed = false;
     UIID id = yagi_id_next();
 
@@ -406,13 +416,13 @@ bool yagi_input_with_loc(int width, int* codepoints, size_t* codepoint_count_ptr
     bool is_focused = yagi_ui.focus == id;
     if (is_focused) {
         int key = GetCharPressed();
-        if (key >= ' ' && codepoint_count < codepoint_count_max) {
-            codepoints[codepoint_count++] = key;
+        if (key >= ' ') {
+            yagi__input_buffer_push(input_buffer, key);
             changed = true;
         }
 
-        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && codepoint_count > 0) {
-            codepoint_count--;
+        if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && input_buffer->count > 0) {
+            input_buffer->count--;
             changed = true;
         }
     }
@@ -422,25 +432,23 @@ bool yagi_input_with_loc(int width, int* codepoints, size_t* codepoint_count_ptr
 
     size_t codepoint_offset = 0;
 
-    char* utf8 = yagi_utf8_temp(codepoints + codepoint_offset, codepoint_count - codepoint_offset);
+    char* utf8 = yagi_utf8_temp(input_buffer->codepoints + codepoint_offset, input_buffer->count - codepoint_offset);
     Vector2 text_size = MeasureTextEx(yagi_ui.style.font, utf8, yagi_ui.style.font_size, yagi_ui.style.font_spacing);
-    while (codepoint_offset < codepoint_count && text_size.x > width) {
+    while (codepoint_offset < input_buffer->count && text_size.x > width) {
         codepoint_offset++;
 
-        utf8 = yagi_utf8_temp(codepoints + codepoint_offset, codepoint_count - codepoint_offset);
+        utf8 = yagi_utf8_temp(input_buffer->codepoints + codepoint_offset, input_buffer->count - codepoint_offset);
         text_size = MeasureTextEx(yagi_ui.style.font, utf8, yagi_ui.style.font_size, yagi_ui.style.font_spacing);
     }
 
-    codepoints[codepoint_count] = 0;
     Rectangle cursor = { rect.x + text_size.x, rect.y, 2, yagi_ui.style.font_size };
-    DrawTextCodepoints(yagi_ui.style.font, codepoints + codepoint_offset, codepoint_count - codepoint_offset, (Vector2){ rect.x, rect.y }, yagi_ui.style.font_size, yagi_ui.style.font_spacing, yagi_ui.style.text_color);
+    DrawTextCodepoints(yagi_ui.style.font, input_buffer->codepoints + codepoint_offset, input_buffer->count - codepoint_offset, (Vector2){ rect.x, rect.y }, yagi_ui.style.font_size, yagi_ui.style.font_spacing, yagi_ui.style.text_color);
     if (is_focused) DrawRectangleRec(cursor, yagi_ui.style.text_color);
 
     if (!collides && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && yagi_ui.focus == id) yagi_ui.focus = 0;
     
     yagi_expand_layout_with_loc((Vector2){width, yagi_ui.style.font_size}, file, line);
 
-    *codepoint_count_ptr = codepoint_count;
     return changed;
 }
 
