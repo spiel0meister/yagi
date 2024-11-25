@@ -7,9 +7,6 @@
 #include <raylib.h>
 
 typedef uint64_t UIID;
-
-#define YAGI_LAYOUT_MAX_COUNT 1024
-
 typedef enum { LAYOUT_HORZ, LAYOUT_VERT }LayoutType;
 
 typedef struct {
@@ -23,11 +20,21 @@ typedef struct {
 }Layout;
 
 typedef struct {
+    Color bg_color, text_color;
+    int font_size, font_spacing;
+
+    Font font;
+}YagiStyle;
+
+typedef struct {
     UIID active, focus, highlight;
     UIID id_counter;
 
+    YagiStyle style;
+
     size_t start_counter;
 
+#define YAGI_LAYOUT_MAX_COUNT 1024
     Layout layout_stack[YAGI_LAYOUT_MAX_COUNT];
     size_t layout_count;
 }YagiUi;
@@ -47,13 +54,17 @@ void yagi_begin_sublayout_with_loc(LayoutType type, float padding, const char* f
 void yagi_end_layout_with_loc(const char* file, int line);
 void yagi_ui_end_with_loc(const char* file, int line);
 
+void yagi_ui_set_default_style();
+YagiStyle* yagi_ui_get_style();
+YagiStyle yagi_ui_get_style_copy();
+
 void yagi_text_with_loc(const char* file, int line, const char* fmt, ...);
 void yagi_empty_with_loc(Vector2 size, const char* file, int line);
 bool yagi_button_with_loc(const char* label, const char* file, int line);
 bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_count, const char* file, int line);
 // TODO: add selection
 // TODO: key things (moving by word, etc.)
-bool yagi_input_with_loc(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max, const char* file, int line);
+bool yagi_input_with_loc(int width, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max, const char* file, int line);
 bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int line);
 
 #define yagi_ui_begin() yagi_ui_begin_with_loc(__FILE__, __LINE__)
@@ -66,7 +77,7 @@ bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int lin
 #define yagi_empty(size) yagi_empty_with_loc(size, __FILE__, __LINE__)
 #define yagi_button(label) yagi_button_with_loc(label, __FILE__, __LINE__)
 #define yagi_dropdown(already_selected, labels, label_count) yagi_dropdown_with_loc(already_selected, labels, label_count, __FILE__, __LINE__)
-#define yagi_input(size, codepoints, codepoint_count_ptr, codepoint_count_max) yagi_input_with_loc(size, codepoints, codepoint_count_ptr, codepoint_count_max, __FILE__, __LINE__)
+#define yagi_input(width, codepoints, codepoint_count_ptr, codepoint_count_max) yagi_input_with_loc(width, codepoints, codepoint_count_ptr, codepoint_count_max, __FILE__, __LINE__)
 #define yagi_slider(width, value_ptr) yagi_slider_with_loc(width, value_ptr, __FILE__, __LINE__)
 
 extern YagiUi yagi_ui;
@@ -88,6 +99,24 @@ char* yagi_utf8_temp(int* codepoints, int codepoints_count) {
 }
 
 YagiUi yagi_ui = {0};
+
+YagiStyle* yagi_ui_get_style() {
+    return &yagi_ui.style;
+}
+
+YagiStyle yagi_ui_get_style_copy() {
+    return yagi_ui.style;
+}
+
+void yagi_ui_set_default_style() {
+    yagi_ui.style = (YagiStyle) {
+        .bg_color = WHITE,
+        .text_color = BLACK,
+        .font_size = 20,
+        .font_spacing = 1,
+        .font = GetFontDefault()
+    };
+}
 
 static Layout* yagi__top_layout_with_loc(const char* file, int line) {
     if (yagi_ui.layout_count <= 0) {
@@ -178,6 +207,8 @@ void yagi_ui_begin_with_loc(const char* file, int line) {
 
     yagi_ui.highlight = 0;
     yagi_ui.id_counter = 0;
+
+    yagi_ui_set_default_style();
 }
 
 void yagi_ui_end_with_loc(const char* file, int line) {
@@ -210,12 +241,10 @@ static char yagi_text_buffer[4096] = {0};
 
     Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
 
-    int text_width = MeasureText(yagi_text_buffer, 20);
-    DrawText(yagi_text_buffer, pos.x, pos.y, 20, BLACK);
+    Vector2 text_size = MeasureTextEx(yagi_ui.style.font, yagi_text_buffer, yagi_ui.style.font_size, yagi_ui.style.font_spacing);
+    DrawTextEx(yagi_ui.style.font, yagi_text_buffer, (Vector2) {pos.x, pos.y}, yagi_ui.style.font_size, yagi_ui.style.font_spacing, yagi_ui.style.text_color);
 
-
-    Vector2 size = { text_width, 20 };
-    yagi_expand_layout_with_loc(size, file, line);
+    yagi_expand_layout_with_loc(text_size, file, line);
 }
 
 void yagi_empty_with_loc(Vector2 size, const char* file, int line) {
@@ -226,9 +255,10 @@ bool yagi_button_with_loc(const char* label, const char* file, int line) {
     UIID id = yagi_id_next();
     bool clicked = false;
 
-    Vector2 widget_size = { MeasureText(label, 20), 20 };
+    Vector2 widget_size = { MeasureText(label, yagi_ui.style.font_size), yagi_ui.style.font_size };
     Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
     Rectangle rect = { pos.x, pos.y, widget_size.x, widget_size.y };
+    Rectangle border_rect = { rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4 };
 
     Vector2 mouse = GetMousePosition();
     bool collides = CheckCollisionPointRec(mouse, rect);
@@ -246,13 +276,15 @@ bool yagi_button_with_loc(const char* label, const char* file, int line) {
         yagi_ui.active = 0;
     }
 
-    Color bg = WHITE;
+    Color bg = yagi_ui.style.bg_color;
     if (yagi_ui.highlight == id) bg = ColorBrightness(bg, -0.5);
 
-    DrawRectangleRec((Rectangle) { rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4 }, BLACK);
+    DrawRectangleRec(border_rect, yagi_ui.style.text_color);
     DrawRectangleRec(rect, bg);
-    DrawText(label, rect.x + rect.width / 2 - widget_size.x / 2, rect.y + rect.height / 2 - widget_size.y / 2, 20, BLACK);
+    DrawTextEx(yagi_ui.style.font, label, (Vector2) {rect.x + rect.width / 2 - widget_size.x / 2, rect.y + rect.height / 2 - widget_size.y / 2}, yagi_ui.style.font_size, yagi_ui.style.font_spacing, yagi_ui.style.text_color);
 
+    widget_size.x = border_rect.width;
+    widget_size.y = border_rect.height;
     yagi_expand_layout_with_loc(widget_size, file, line);
 
     return clicked;
@@ -265,15 +297,15 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
 
     yagi_begin_sublayout(LAYOUT_VERT, 0);
     Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
-    Rectangle rect = { pos.x, pos.y, 0, 20 };
+    Rectangle rect = { pos.x, pos.y, 0, yagi_ui.style.font_size };
     for (size_t i = 0; i < label_count; i++) {
-        int text_width = MeasureText(labels[i], 20);
-        if (rect.width < text_width) rect.width = text_width;
+        Vector2 text_size = MeasureTextEx(yagi_ui.style.font, "Select...", yagi_ui.style.font_size, yagi_ui.style.font_spacing);
+        if (rect.width < text_size.x) rect.width = text_size.x;
     }
 
     if (*already_selected == -1) {
-        int text_width = MeasureText("Select...", 20);
-        if (rect.width < text_width) rect.width = text_width;
+        Vector2 text_size = MeasureTextEx(yagi_ui.style.font, "Select...", yagi_ui.style.font_size, yagi_ui.style.font_spacing);
+        if (rect.width < text_size.x) rect.width = text_size.x;
     }
 
     Vector2 mouse = GetMousePosition();
@@ -293,19 +325,19 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
     }
 
     char* label = selected == -1 ? "Select..." : labels[selected];
-    int text_width = MeasureText(label, 20);
-    Color bg = WHITE;
+    Vector2 text_size = MeasureTextEx(yagi_ui.style.font, "Select...", yagi_ui.style.font_size, yagi_ui.style.font_spacing);
+    Color bg = yagi_ui.style.bg_color;
     if (yagi_ui.highlight == id) bg = ColorBrightness(bg, -0.5);
 
-    DrawRectangleRec((Rectangle) { rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4 }, BLACK);
+    DrawRectangleRec((Rectangle) { rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4 }, yagi_ui.style.text_color);
     DrawRectangleRec(rect, bg);
 
-    DrawText(label, rect.x + rect.width / 2 - (float)text_width / 2, rect.y + rect.height / 2 - 10, 20, BLACK);
+    DrawTextEx(yagi_ui.style.font, label, (Vector2) {rect.x + rect.width / 2 - text_size.x / 2, rect.y + rect.height / 2 - 10}, yagi_ui.style.font_size, yagi_ui.style.font_spacing, yagi_ui.style.text_color);
 
     yagi_expand_layout_with_loc((Vector2) { rect.width, rect.height }, file, line);
     if (yagi_ui.focus == id) {
         for (size_t i = 0; i < label_count; i++) {
-            int text_width = MeasureText(labels[i], 20);
+            Vector2 text_size = MeasureTextEx(yagi_ui.style.font, "Select...", yagi_ui.style.font_size, yagi_ui.style.font_spacing);
             Rectangle item_rect = { rect.x, rect.y + rect.height * (i + 1), rect.width, rect.height };
             UIID item_id = yagi_id_next();
 
@@ -325,13 +357,13 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
                 yagi_ui.active = 0;
             }
 
-            Color bg = WHITE;
+            Color bg = yagi_ui.style.bg_color;
             if (yagi_ui.highlight == item_id) bg = ColorBrightness(bg, -0.5);
 
-            DrawRectangleRec((Rectangle) { item_rect.x - 2, item_rect.y - 2, item_rect.width + 4, item_rect.height + 4 }, BLACK);
+            DrawRectangleRec((Rectangle) { item_rect.x - 2, item_rect.y - 2, item_rect.width + 4, item_rect.height + 4 }, yagi_ui.style.text_color);
             DrawRectangleRec(item_rect, bg);
 
-            DrawText(labels[i], item_rect.x + item_rect.width / 2 - (float)text_width / 2, item_rect.y + item_rect.height / 2 - 10, 20, BLACK);
+            DrawTextEx(yagi_ui.style.font, labels[i], (Vector2) {item_rect.x + item_rect.width / 2 - (float)text_size.x / 2, item_rect.y + item_rect.height / 2 - 10}, yagi_ui.style.font_size, yagi_ui.style.font_spacing, yagi_ui.style.text_color);
             
             yagi_expand_layout_with_loc((Vector2) { item_rect.width, item_rect.height }, file, line);
         }
@@ -347,13 +379,13 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
 }
 
 
-bool yagi_input_with_loc(Vector2 size, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max, const char* file, int line) {
+bool yagi_input_with_loc(int width, int* codepoints, size_t* codepoint_count_ptr, size_t codepoint_count_max, const char* file, int line) {
     size_t codepoint_count = *codepoint_count_ptr;
     bool changed = false;
     UIID id = yagi_id_next();
 
     Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
-    Rectangle rect = { pos.x, pos.y, size.x, size.y };
+    Rectangle rect = { pos.x, pos.y, width, yagi_ui.style.font_size };
 
     Vector2 mouse = GetMousePosition();
     bool collides = CheckCollisionPointRec(mouse, rect);
@@ -385,28 +417,28 @@ bool yagi_input_with_loc(Vector2 size, int* codepoints, size_t* codepoint_count_
         }
     }
 
-    if (is_focused) DrawRectangle(rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4, BLACK);
-    DrawRectangleRec(rect, WHITE);
+    if (is_focused) DrawRectangle(rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4, yagi_ui.style.text_color);
+    DrawRectangleRec(rect, yagi_ui.style.bg_color);
 
     size_t codepoint_offset = 0;
 
     char* utf8 = yagi_utf8_temp(codepoints + codepoint_offset, codepoint_count - codepoint_offset);
-    Vector2 text_width = MeasureTextEx(GetFontDefault(), utf8, 20, 1);
-    while (codepoint_offset < codepoint_count && text_width.x > size.x) {
+    Vector2 text_size = MeasureTextEx(yagi_ui.style.font, utf8, yagi_ui.style.font_size, yagi_ui.style.font_spacing);
+    while (codepoint_offset < codepoint_count && text_size.x > width) {
         codepoint_offset++;
 
         utf8 = yagi_utf8_temp(codepoints + codepoint_offset, codepoint_count - codepoint_offset);
-        text_width = MeasureTextEx(GetFontDefault(), utf8, 20, 1);
+        text_size = MeasureTextEx(yagi_ui.style.font, utf8, yagi_ui.style.font_size, yagi_ui.style.font_spacing);
     }
 
     codepoints[codepoint_count] = 0;
-    Rectangle cursor = { rect.x + text_width.x, rect.y, 2, 20 };
-    DrawTextCodepoints(GetFontDefault(), codepoints + codepoint_offset, codepoint_count - codepoint_offset, (Vector2){ rect.x, rect.y }, 20, 1, BLACK);
-    if (is_focused) DrawRectangleRec(cursor, BLACK);
+    Rectangle cursor = { rect.x + text_size.x, rect.y, 2, yagi_ui.style.font_size };
+    DrawTextCodepoints(yagi_ui.style.font, codepoints + codepoint_offset, codepoint_count - codepoint_offset, (Vector2){ rect.x, rect.y }, yagi_ui.style.font_size, yagi_ui.style.font_spacing, yagi_ui.style.text_color);
+    if (is_focused) DrawRectangleRec(cursor, yagi_ui.style.text_color);
 
     if (!collides && IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && yagi_ui.focus == id) yagi_ui.focus = 0;
     
-    yagi_expand_layout_with_loc(size, file, line);
+    yagi_expand_layout_with_loc((Vector2){width, yagi_ui.style.font_size}, file, line);
 
     *codepoint_count_ptr = codepoint_count;
     return changed;
@@ -436,10 +468,10 @@ bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int lin
         yagi_ui.active = 0;
     }
 
-    DrawRectangle(rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4, BLACK);
-    DrawRectangleRec(rect, WHITE);
+    DrawRectangle(rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4, yagi_ui.style.text_color);
+    DrawRectangleRec(rect, yagi_ui.style.bg_color);
 
-    Color circle_color = BLACK;
+    Color circle_color = yagi_ui.style.text_color;
     if (yagi_ui.highlight == id) circle_color = ColorBrightness(circle_color, 0.5);
     DrawCircleV(ball_pos, ball_r, circle_color);
 
