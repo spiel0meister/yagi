@@ -34,7 +34,9 @@ typedef struct {
 
     size_t start_counter;
 
+#ifndef YAGI_LAYOUT_MAX_COUNT
 #define YAGI_LAYOUT_MAX_COUNT 1024
+#endif // YAGI_LAYOUT_MAX_COUNT
     Layout layout_stack[YAGI_LAYOUT_MAX_COUNT];
     size_t layout_count;
 }YagiUi;
@@ -72,6 +74,7 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
 // TODO: key things (moving by word, etc.)
 bool yagi_input_with_loc(int width, InputBuffer* input_buffer, const char* file, int line);
 bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int line);
+bool yagi_checkbox_with_loc(Vector2 size, bool* checked_ptr, const char* file, int line);
 
 #define yagi_ui_begin() yagi_ui_begin_with_loc(__FILE__, __LINE__)
 #define yagi_begin_layout(type, pos, padding) yagi_begin_layout_with_loc(type, pos, padding, __FILE__, __LINE__)
@@ -85,6 +88,7 @@ bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int lin
 #define yagi_dropdown(already_selected, labels, label_count) yagi_dropdown_with_loc(already_selected, labels, label_count, __FILE__, __LINE__)
 #define yagi_input(width, input_buffer) yagi_input_with_loc(width, input_buffer, __FILE__, __LINE__)
 #define yagi_slider(width, value_ptr) yagi_slider_with_loc(width, value_ptr, __FILE__, __LINE__)
+#define yagi_checkbox(size, checked_ptr) yagi_checkbox_with_loc(size, checked_ptr, __FILE__, __LINE__)
 
 extern YagiUi yagi_ui;
 
@@ -494,6 +498,47 @@ bool yagi_slider_with_loc(int width, float* value_ptr, const char* file, int lin
     yagi_expand_layout_with_loc((Vector2) { rect.width, rect.height }, file, line);
 
     *value_ptr = value;
+    return changed;
+}
+
+bool yagi_checkbox_with_loc(Vector2 size, bool* checked_ptr, const char* file, int line) {
+    bool checked = *checked_ptr;
+    bool changed = false;
+    UIID id = yagi_id_next();
+
+    Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
+    Rectangle rect = { pos.x, pos.y, size.x, size.y };
+    Rectangle border_rect = { rect.x - 2, rect.y - 2, rect.width + 4, rect.height + 4 };
+
+    Vector2 mouse = GetMousePosition();
+    bool collides = CheckCollisionPointRec(mouse, border_rect);
+    if (collides) {
+        yagi_ui.highlight = id;
+        if (yagi_ui.active == 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            yagi_ui.active = id;
+        }
+    }
+
+    if (yagi_ui.active == id) {
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            if (collides) {
+                checked = !checked;
+                changed = true;
+            }
+            yagi_ui.active = 0;
+        }
+    }
+
+    DrawRectangleRec(border_rect, BLACK);
+
+    Color bg = yagi_ui.style.bg_color;
+    if (checked) bg = BLUE;
+    if (yagi_ui.highlight == id) bg = ColorBrightness(bg, -0.5);
+    DrawRectangleRec(rect, bg);
+
+    yagi_expand_layout_with_loc((Vector2) { border_rect.width, border_rect.height }, file, line);
+
+    *checked_ptr = checked;
     return changed;
 }
 
