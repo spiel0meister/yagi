@@ -310,11 +310,11 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
     Vector2 pos = yagi_next_widget_pos_with_loc(file, line);
     Rectangle rect = { pos.x, pos.y, 0, yagi_ui.style.font_size };
     for (size_t i = 0; i < label_count; i++) {
-        Vector2 text_size = MeasureTextEx(yagi_ui.style.font, "Select...", yagi_ui.style.font_size, yagi_ui.style.font_spacing);
+        Vector2 text_size = MeasureTextEx(yagi_ui.style.font, labels[i], yagi_ui.style.font_size, yagi_ui.style.font_spacing);
         if (rect.width < text_size.x) rect.width = text_size.x;
     }
 
-    if (*already_selected == -1) {
+    if (selected < 0) {
         Vector2 text_size = MeasureTextEx(yagi_ui.style.font, "Select...", yagi_ui.style.font_size, yagi_ui.style.font_spacing);
         if (rect.width < text_size.x) rect.width = text_size.x;
     }
@@ -335,8 +335,8 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
         yagi_ui.active = 0;
     }
 
-    char* label = selected == -1 ? "Select..." : labels[selected];
-    Vector2 text_size = MeasureTextEx(yagi_ui.style.font, "Select...", yagi_ui.style.font_size, yagi_ui.style.font_spacing);
+    char* label = selected < 0 ? "Select..." : labels[selected];
+    Vector2 text_size = MeasureTextEx(yagi_ui.style.font, label, yagi_ui.style.font_size, yagi_ui.style.font_spacing);
     Color bg = yagi_ui.style.bg_color;
     if (yagi_ui.highlight == id) bg = ColorBrightness(bg, -0.5);
 
@@ -348,7 +348,7 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
     yagi_expand_layout_with_loc((Vector2) { rect.width, rect.height }, file, line);
     if (yagi_ui.focus == id) {
         for (size_t i = 0; i < label_count; i++) {
-            Vector2 text_size = MeasureTextEx(yagi_ui.style.font, "Select...", yagi_ui.style.font_size, yagi_ui.style.font_spacing);
+            Vector2 text_size = MeasureTextEx(yagi_ui.style.font, labels[i], yagi_ui.style.font_size, yagi_ui.style.font_spacing);
             Rectangle item_rect = { rect.x, rect.y + rect.height * (i + 1), rect.width, rect.height };
             UIID item_id = yagi_id_next();
 
@@ -374,12 +374,12 @@ bool yagi_dropdown_with_loc(int* already_selected, char* labels[], size_t label_
             DrawRectangleRec((Rectangle) { item_rect.x - 2, item_rect.y - 2, item_rect.width + 4, item_rect.height + 4 }, yagi_ui.style.text_color);
             DrawRectangleRec(item_rect, bg);
 
-            DrawTextEx(yagi_ui.style.font, labels[i], (Vector2) {item_rect.x + item_rect.width / 2 - (float)text_size.x / 2, item_rect.y + item_rect.height / 2 - 10}, yagi_ui.style.font_size, yagi_ui.style.font_spacing, yagi_ui.style.text_color);
+            DrawTextEx(yagi_ui.style.font, labels[i], (Vector2) {item_rect.x + item_rect.width / 2 - text_size.x / 2, item_rect.y + item_rect.height / 2 - yagi_ui.style.font_size / 2}, yagi_ui.style.font_size, yagi_ui.style.font_spacing, yagi_ui.style.text_color);
             
             yagi_expand_layout_with_loc((Vector2) { item_rect.width, item_rect.height }, file, line);
         }
     }
-    yagi_end_layout();
+    yagi_end_layout_with_loc(file, line);
 
     if (yagi_ui.focus == id && !collides_main && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         yagi_ui.focus = 0;
